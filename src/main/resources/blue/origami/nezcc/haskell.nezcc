@@ -48,7 +48,7 @@ Byte[].slice        = ((take (%3$s - %2$s) . drop %2$s) (%1$s))
 
 TreeList            = Ar.Vector AST
 TreeList.empty      = Ar.empty
-TreeList.cons       = ((Tree (%s) (%s)) `Ar.cons` %s)
+TreeList.cons       = ((%s, %s) `Ar.cons` %s)
 
 MemoList          = Ar.Vector (%s)
 MemoList.new      = Ar.empty
@@ -70,7 +70,7 @@ record           = %2$s :: %1$s
 records          = ,
 
 object           = %1$s {%2$s}
-objectparam      = %1$s=%2$s
+objectparam      = %1$s = %2$s
 objectparams     = , 
 
 getter           = (%2$s %1$s)
@@ -79,7 +79,7 @@ setter           = S.put $ %1$s {%2$s = %3$s}
 functype         = (%3$s -> S.State NezParserContext (%1$s))
 functypeparam    = (%1$s)
 functypeparams   = ->
-return           = return (%s)
+return           = %s
 
 const            = '''
 %2$s :: %1$s
@@ -88,7 +88,8 @@ const            = '''
 
 function         = '''
 %2$s :: %4$s
-%2$s %3$s = do
+%2$s f%3$s = do
+  px' <- S.get
 '''
 
 param    = %2$s
@@ -111,16 +112,19 @@ switch           = case (%s) of
 case             = %s -> %s
 default          = _ -> %s
 
-and              = %s && %s
-or               = (%s) || (%s)
+and              = (%s) <&&> (%s)
+or               = (%s) <||> (%s)
 not              = (not (%s))
-ifexpr           = (if (%1$s) then (%2$s) else (%3$s))
+eq               = ((==) <$> %s <*> %s)
+%                = %s `mod` %s
 
-funccall         = (S.evalState (%s %s) px')
+ifexpr           = ((%1$s) <?> (%2$s, %3$s))
+
+funccall         = (%s %s)
 arg              = (%s)
 args             =
 
-lambda           = (\%s -> return (%s))
+lambda           = (\%1$s -> %2$s)
 
 #base64           = B("%s")
 #bools            = B256("%s")
@@ -136,7 +140,6 @@ TList.empty       = []
 TList.cons        = %s:%s
 
 imports = '''
-{-# LANGUAGE FlexibleContexts #-}
 module XML(parseText) where
 import Prelude hiding (length,log,take,drop)
 import Data.Word
@@ -147,6 +150,7 @@ import Data.Int
 import Data.Maybe
 import qualified Data.Vector as Ar
 import qualified Data.IntMap as Map
+import Control.Applicative
 
 '''
 
@@ -157,12 +161,29 @@ nezvalues = fmap pack [data178, data179]
 '''
 
 libs = '''
+(<&&>) :: S.State NezParserContext Bool -> S.State NezParserContext Bool -> S.State NezParserContext Bool
+(<&&>) x y = (&&) <$> x <*> y
 
-(%) = mod
+(<||>) :: S.State NezParserContext Bool -> S.State NezParserContext Bool -> S.State NezParserContext Bool
+(<||>) x y = (||) <$> x <*> y
 
-data AST = Tree String (Ar.Vector AST)
-         | Remainder ByteString
+(<?>) :: S.State NezParserContext Bool-> (S.State NezParserContext a,S.State NezParserContext a)  -> S.State NezParserContext a
+cond <?> (e1,e2) = do
+  s0 <- S.get
+  let (a1,s1) = S.runState cond s0
+  if a1
+    then S.put s1 >> e1
+    else S.put s1 >> e2
+
+data AST = Node String SubTree
+         | Leaf String String
          deriving (Eq,Show)
+
+--data SubTree = SubTree {sLabel :: String, sNode :: AST, sNext :: SubTree}
+--             | Notree
+--             deriving (Eq,Show)
+
+type SubTree = Ar.Vector (String,AST)
 
 '''
 
@@ -192,11 +213,12 @@ newMemos tree' length' = Ar.replicate length' MemoEntry { key = -1, result = 0, 
 
 def storeM = '''
 storeM :: ((NezParserContext)->(Int)->(Int)->(Bool) -> S.State (NezParserContext) Bool)
-storeM px' memoPoint' pos' matched' = do
-  let oldmemo = memos px'
-  let key' = (S.evalState (longkey (fromIntegral pos') memoPoint') px')
-  let m' = (S.evalState (getMemo px' key') px')
-  S.put $ px' {memos =  rewriteList oldmemo key' (m' {key = key', result = if matched' then 1 else 0, mpos = if matched' then pos px' else pos', mtree = tree px', mstate = (state px')})}
+storeM fpx' memoPoint' pos' matched' = do
+  px' <- S.get
+  let (key',s1) = (S.runState (longkey (fromIntegral pos') memoPoint') px')
+  let (m', s2) = (S.runState (getMemo px' key') s1)
+  let oldmemo = memos s2
+  S.put $ s2 {memos = rewriteList oldmemo (key' % 257) (m' {key = key', result = if matched' then 1 else 0, mpos = if matched' then pos s2 else pos', mtree = tree s2, mstate = (state s2)})}
   return (matched')
   where
     rewriteList xs i v = let k = fromIntegral i in Ar.update xs (Ar.singleton (k,v))
@@ -205,7 +227,8 @@ storeM px' memoPoint' pos' matched' = do
 
 def backpos = '''
 backpos :: ((NezParserContext)->(Int) -> S.State (NezParserContext) Int)
-backpos px' pos' = do
+backpos fpx' pos' = do
+  px' <- S.get
   if ((headpos px') < pos') then
     S.put (px' {headpos = pos'}) >> return pos'
     else return (pos')
@@ -215,33 +238,39 @@ backpos px' pos' = do
 
 def endT = '''
 gettag :: ((Int) -> S.State (NezParserContext) (String))
-gettag ntag' = do
-  return ((nezsymbols Ar.! ntag'))
+gettag ntag' = nezsymbols Ar.! ntag'
 
 getlabel :: ((Int) -> S.State (NezParserContext) (String))
-getlabel nlabel' = do
-  return ((nezsymbols Ar.! nlabel'))
+getlabel nlabel' = nezsymbols Ar.! nlabel'
 
 getval :: ((Int) -> S.State (NezParserContext) (ByteString))
-getval nvalue' = do
-  return ((nezvalues Ar.! nvalue'))
+getval nvalue' = nezvalues Ar.! nvalue'
 
 getvalen :: ((Int) -> S.State (NezParserContext) (Int))
-getvalen nvalue' = do
-  return ((nezvaluesizes Ar.! nvalue'))
+getvalen nvalue' = nezvaluesizes Ar.! nvalue'
 
-recT :: ((NezParserContext)->(TreeLog)->(Int)->(Int)->(Int)->(Ar.Vector AST) -> S.State (NezParserContext) AST)
-recT px' tcur' ntag' nvalue' epos' subtrees' = do
-  return ((if ((lop tcur') == (0)) then ((if (nvalue' == (0)) then (newtree (S.evalState (gettag ntag') px') (inputs px') (lpos tcur') epos' subtrees') else (newtree (S.evalState (gettag ntag') px') (S.evalState (getval nvalue') px') (0) (S.evalState (getvalen nvalue') px') subtrees'))) else ((S.evalState (recT px' (fromJust ((lprev tcur'))) (if (ntag' == (0) && (lop tcur') == (1)) then ((lpos tcur')) else (ntag')) (if (nvalue' == (0) && (lop tcur') == (2)) then ((lpos tcur')) else (nvalue')) epos' (if ((lop tcur') == (3)) then (((Tree ((S.evalState (getlabel (lpos tcur')) px')) (Ar.singleton (ltree tcur'))) `Ar.cons` subtrees')) else (subtrees'))) px'))))
+recT :: ((NezParserContext)->(TreeLog)->(Int)->(Int)->(Int)->(SubTree) -> S.State (NezParserContext) AST)
+recT fpx' tcur' ntag' nvalue' epos' subtrees' = do
+  px' <- S.get
+  if lop tcur' == 0
+    then if nvalue' == 0
+      then return $ newtree (nezsymbols Ar.! ntag') (inputs px') (lpos tcur') epos' subtrees'
+      else return $ newtree (nezsymbols Ar.! ntag') (nezvalues Ar.! nvalue') 0 (nezvaluesizes Ar.! nvalue') subtrees'
+    else recT px' (fromJust (lprev tcur')) (if (ntag' == (0) && (lop tcur') == (1)) then ((lpos tcur')) else (ntag')) (if (nvalue' == (0) && (lop tcur') == (2)) then ((lpos tcur')) else (nvalue')) epos' (if ((lop tcur') == (3)) then (nezsymbols Ar.! (lpos tcur'), (ltree tcur')) `Ar.cons` subtrees' else subtrees')
 
 rLog :: ((TreeLog) -> S.State (NezParserContext) ((Maybe (TreeLog))))
 rLog tcur' = do
   px' <- S.get
-  return ((if ((lop tcur') == (0)) then ((lprev tcur')) else ((S.evalState (rLog (fromJust ((lprev tcur')))) px'))))
+  if lop tcur' == 0
+   then return (lprev tcur')
+   else rLog (fromJust (lprev tcur'))
 
 endT :: ((NezParserContext)->(Int)->(Int) -> S.State (NezParserContext) (Bool))
-endT px' shift' ntag' = do
-  S.put $ px' {tree = (S.evalState (recT px' (fromJust ((treeLog px'))) ntag' (0) ((pos px') + shift') Ar.empty) px'), treeLog = (S.evalState (rLog (fromJust ((treeLog px')))) px')}
+endT fpx' shift' ntag' = do
+  px' <- S.get
+  let (nTree,s1) = S.runState (recT px' (fromJust ((treeLog px'))) ntag' (0) ((pos px') + shift') Ar.empty) px'
+  let (nTreeLog,s2) = S.runState (rLog (fromJust ((treeLog px')))) s1
+  S.put $ s2 {tree = nTree, treeLog = nTreeLog}
   return (True)
 
 '''
@@ -256,19 +285,19 @@ parse inputs' length' = let tree' = newtree (Ar.head nezsymbols) inputs' 0 lengt
                              ,tree=tree'
                              ,treeLog=(Just (TreeLog {lop=0,lpos=0,ltree=tree',lprev=Nothing}))
                              ,state=Nothing
-                             ,memos=(newMemos tree' 193)} in
+                             ,memos=(newMemos tree' 257)} in
                         let result = S.runState (e0 px') px' in
                         if Prelude.fst result then tree (Prelude.snd result) else newtree (Prelude.show nezerror) inputs' (headpos (Prelude.snd result)) length' Ar.empty
 
 parseText :: String -> AST
-parseText text' = let inputs' = C.pack text' in
+parseText text' = let inputs' = (C.pack text') `C.snoc` '\NUL' in
                   let length' = C.length inputs' - 1 in
                   parse inputs' length'
 
-newtree :: String -> ByteString -> Int -> Int -> Ar.Vector AST -> AST
+newtree :: String -> ByteString -> Int -> Int -> SubTree -> AST
 newtree tag inputs pos epos subs = if Ar.null subs
-  then Tree tag (Ar.singleton (Remainder inputs))
-  else Ar.head subs
+  then Leaf tag (C.unpack $ (C.drop pos (C.take epos inputs)))
+  else Node tag subs
 
 newMemos tree' length' = Ar.replicate length' MemoEntry { key = -1, result = 0, mpos = 0, mtree = tree', mstate = Nothing}
 
