@@ -1,0 +1,90 @@
+# python3/init.kh
+
+extension  = py
+
+Bool       = 
+Int        = 
+Float      = 
+String     = 
+
+null       = None
+
+# Bool
+true:Bool         = True
+false:Bool        = False
+&&:Bool:Bool:Bool = %s and %s
+||:Bool:Bool:Bool = %s or %s
+!:Bool:Bool       = (not %s)
+
+#Int 
+0:Int             = %d
++:Int:Int         = +%s
+-:Int:Int         = -%s
++:Int:Int:Int     = %s + %s
+-:Int:Int:Int     = %s - %s
+*:Int:Int:Int     = %s * %s
+/:Int:Int:Int     = %s // %s
+%:Int:Int:Int     = %s %% %s
+
+==:Int:Int:Bool  = %s == %s
+!=:Int:Int:Bool  = %s != %s
+<:Int:Int:Bool   = %s < %s
+>:Int:Int:Bool   = %s > %s
+<=:Int:Int:Bool  = %s <= %s
+>=:Int:Int:Bool  = %s >= %s
+
+<<:Int:Int:Int   = %s << %s
+>>:Int:Int:Int   = %s >> %s
+&&:Int:Int:Int   = %s & %s
+||:Int:Int:Int   = %s | %s
+^^:Int:Int:Int   = %s ^ %s
+!:Int:Int        = ~%s
+
+# Float
+0:Float       = %f
+Int=>Float           = float(%s)
+Float->Int           = int(%s)
++:Float:Float        = +%s
+-:Float:Float        = -%s
++:Float:Float:Float    = (%s + %s)
+-:Float:Float:Float    = (%s - %s)
+*:Float:Float:Float    = (%s * %s)
+/:Float:Float:Float    = (%s / %s)
+%:Float:Float:Float    = (%s %% %s)
+
+==:Float:Float:Bool  = %s == %s
+!=:Float:Float:Bool  = %s != %s
+<:Float:Float:Bool   = %s < %s
+>:Float:Float:Bool   = %s > %s
+<=:Float:Float:Bool  = %s <= %s
+>=:Float:Float:Bool  = %s >= %s
+
+#Syntax
+
+comment          = # %s
+begin            = :
+end              = 
+;                = 
+,                = ,
+()               = (%s)
+
+module           =
+
+const            = %2$s = %3$s
+let              = %2$s = %3$s
+
+function         = def %2$s(%3$s):
+function1        = def %2$s(%3$s):
+return           = return %s
+
+apply            = %s
+funcref          = %s
+
+if               = if %s: 
+else if          = elif %s:
+while            = while %s
+ifexpr           = (%1$s ? %2$s : %3$s)
+
+lambda           = (lambda %s : %s)
+
+

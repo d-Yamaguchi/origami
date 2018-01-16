@@ -16,9 +16,11 @@
 
 package blue.origami.util;
 
-import java.lang.reflect.Field;
+import java.util.Iterator;
+import java.util.List;
+import java.util.function.Function;
+import java.util.stream.BaseStream;
 
-import blue.origami.ffi.OAlias;
 import blue.origami.nez.ast.LocaleFormat;
 
 public interface StringCombinator {
@@ -46,32 +48,22 @@ public interface StringCombinator {
 			sb.append("'");
 			sb.append(o);
 			sb.append("'");
+		} else if (o instanceof BaseStream) {
+			sb.append("[");
+			@SuppressWarnings("unchecked")
+			Iterator<Object> it = ((BaseStream<Object, ?>) o).iterator();
+			int c = 0;
+			while (it.hasNext()) {
+				if (c > 0) {
+					sb.append(",");
+				}
+				appendQuoted(sb, it.next());
+				c++;
+			}
+			sb.append("]");
 		} else {
 			sb.append(o);
 		}
-	}
-
-	public static int appendField(StringBuilder sb, Object o, Class<?> untilClass, int cnt) {
-		if (o == null) {
-			return cnt;
-		}
-		for (Class<?> c = o.getClass(); c != untilClass; c = c.getSuperclass()) {
-			Field[] fs = c.getDeclaredFields();
-			for (Field f : fs) {
-				if (OTypeUtils.isPublic(f) && !OTypeUtils.isStatic(f)) {
-					if (cnt > 0) {
-						sb.append(", ");
-					}
-					OAlias a = f.getAnnotation(OAlias.class);
-					String name = a == null ? f.getName() : a.name();
-					sb.append(name);
-					sb.append(": ");
-					StringCombinator.appendQuoted(sb, OTypeUtils.fieldValue(f, o));
-					cnt++;
-				}
-			}
-		}
-		return cnt;
 	}
 
 	public static String format(LocaleFormat fmt, Object... args) {
@@ -115,6 +107,51 @@ public interface StringCombinator {
 				sb.append("$");
 				sb.append(t);
 			}
+		}
+	}
+
+	public static <T> String joins(T[] objs, String delim) {
+		StringBuilder sb = new StringBuilder();
+		joins(sb, objs, delim);
+		return sb.toString();
+	}
+
+	public static <T> void joins(StringBuilder sb, T[] objs, String delim) {
+		int c = 0;
+		for (T n : objs) {
+			if (c > 0) {
+				sb.append(delim);
+			}
+			StringCombinator.append(sb, n);
+			c++;
+		}
+	}
+
+	public static <T> String joins(T[] objs, String delim, Function<T, Object> map) {
+		StringBuilder sb = new StringBuilder();
+		joins(sb, objs, delim, map);
+		return sb.toString();
+	}
+
+	public static <T> void joins(StringBuilder sb, T[] objs, String delim, Function<T, Object> map) {
+		int c = 0;
+		for (T n : objs) {
+			if (c > 0) {
+				sb.append(delim);
+			}
+			StringCombinator.append(sb, map.apply(n));
+			c++;
+		}
+	}
+
+	public static <T> void joins(StringBuilder sb, List<T> l, String delim, Function<T, Object> map) {
+		int c = 0;
+		for (T n : l) {
+			if (c > 0) {
+				sb.append(delim);
+			}
+			StringCombinator.append(sb, map.apply(n));
+			c++;
 		}
 	}
 

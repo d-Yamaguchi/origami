@@ -1,0 +1,21 @@
+package blue.origami.transpiler.rule;
+
+import blue.origami.nez.ast.Tree;
+import blue.origami.transpiler.TEnv;
+import blue.origami.transpiler.code.Code;
+import blue.origami.transpiler.code.IntCode.TCharCode;
+import blue.origami.transpiler.code.StringCode;
+import blue.origami.util.OStringUtils;
+
+public class CharExpr implements ParseRule {
+
+	@Override
+	public Code apply(TEnv env, Tree<?> t) {
+		String s = t.getString();
+		if (s.length() == 1) {
+			return new TCharCode(s.charAt(0));
+		}
+		return new StringCode(OStringUtils.unquoteString(s));
+	}
+
+}
